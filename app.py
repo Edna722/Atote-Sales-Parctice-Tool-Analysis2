@@ -1,18 +1,15 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import joblib
+import pickle
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-# Load the saved models
-# Load the saved models
-xgb_model = joblib.load("C:/Users/wanji/Desktop/Sales tool 2/Sales-Tool-Analysis2/xgboost_model.joblib")
-arima_model = joblib.load("C:/Users/wanji/Desktop/Sales tool 2/Sales-Tool-Analysis2/arima_model.joblib")
-rf_model = joblib.load("C:/Users/wanji/Desktop/Sales tool 2/Sales-Tool-Analysis2/random_forest_model.joblib")
-sarima_model = joblib.load("C:/Users/wanji/Desktop/Sales tool 2/Sales-Tool-Analysis2/sarima_model.joblib")
+# Load the pickled models
+with open("C:/Users/wanji/Desktop/Sales tool 2/Sales-Tool-Analysis2/arima_model.pkl", "rb") as f:
+    arima_model = pickle.load(f)
 
-# Load the dataset
-data_path = r"C:\Users\wanji\Desktop\Sales tool 2\Sales-Tool-Analysis2\sales_data.csv"
-sales_data = pd.read_csv(data_path)
+with open("C:/Users/wanji/Desktop/Sales tool 2/Sales-Tool-Analysis2/sarima_model.pkl", "rb") as f:
+    sarima_model = pickle.load(f)
 
 # Streamlit App
 st.title("Sales Forecasting")
@@ -23,7 +20,7 @@ st.sidebar.header("Choose Prediction Model")
 # Dropdown to select model
 selected_model = st.sidebar.selectbox(
     "Select Model",
-    ("XGBoost", "ARIMA", "Random Forest", "SARIMA")
+    ("ARIMA", "SARIMA")
 )
 
 # Display selected model
@@ -33,42 +30,58 @@ st.sidebar.write(selected_model)
 # Main content
 st.subheader("Sales Data")
 
+# Load the dataset
+data_path = r"C:\Users\wanji\Desktop\Sales tool 2\Sales-Tool-Analysis2\sales_data.csv"
+# Load the dataset with appropriate date parsing and column specification
+sales_data = pd.read_csv(data_path, parse_dates=['Period'])
+
+# Set 'Period' column as index
+sales_data.set_index('Period', inplace=True)
+
+# Splitting the data into training and testing sets based on specific dates
+cutoff_date = pd.Timestamp('2017-01-01')
+train = sales_data[sales_data.index < cutoff_date]
+test = sales_data[sales_data.index >= cutoff_date]
+
 # Display sample data
 st.write(sales_data.head())
 
-# Prediction function
-# Prediction function
-# Update the ARIMA and SARIMA prediction functions to include parameters
-def predict_sales(model, data):
-    # Get the number of features expected by the model
-    num_features = None
-    if model in ["XGBoost", "Random Forest"]:
-        num_features = data.shape[0]  # Assuming the number of features is equal to the number of columns in the input data
-    # Check if the number of features matches the model's expectations
-    if num_features is not None and num_features != 37:  # Update the number of features accordingly
-        st.error(f"Invalid number of features for {model} model!")
-        return None
+def predict_sales(model, model_params, test_data):
     # Make predictions based on the selected model
-    if model == "XGBoost":
-        prediction = xgb_model.predict(data.reshape(1, -1))
-    elif model == "ARIMA":
-        # Provide the appropriate parameters when calling predict() method
-        prediction = arima_model.predict(n_periods=1, **arima_params)[0]  # Assuming you want to forecast one step ahead
-    elif model == "Random Forest":
-        prediction = rf_model.predict(data.reshape(1, -1))
+    if model == "ARIMA":
+        if not test_data.empty:  # Check if test_data is not empty
+            # Use get_forecast method for ARIMA models
+            forecast = model_params['model'].get_forecast(steps=len(test_data))
+            prediction = forecast.predicted_mean
+        else:
+            prediction = None  # Return None if test_data is empty
     elif model == "SARIMA":
-        # Provide the appropriate parameters when calling predict() method
-        prediction = sarima_model.predict(n_periods=1, **sarima_params)[0]  # Assuming you want to forecast one step ahead
+        if not test_data.empty:  # Check if test_data is not empty
+            # Use get_prediction method for SARIMA models
+            forecast = model_params['model'].get_prediction(start=test_data.index[0], end=test_data.index[-1], dynamic=False)
+            prediction = forecast.predicted_mean
+        else:
+            prediction = None  # Return None if test_data is empty
+    else:
+        raise ValueError("Invalid model selected")
     return prediction
 
-# Prediction
+
+# PREDICTION
 if st.button("Predict Sales"):
-    # Prepare data for prediction
-    input_data = sales_data.iloc[-1, 1:].values  # Exclude the first column (Date)
+    if test.empty:  # Check if test data is empty before making predictions
+        st.warning("Test data is empty. Cannot make prediction.")
+    else:
+        # Make prediction
+        if selected_model == "ARIMA":
+            predicted_sales = predict_sales("ARIMA", {'model': arima_model}, test)
+        elif selected_model == "SARIMA":
+            predicted_sales = predict_sales("SARIMA", {'model': sarima_model}, test)
+        else:
+            raise ValueError("Invalid model selected")
 
-    # Make prediction
-    predicted_sales = predict_sales(selected_model, input_data)
-
-    # Display prediction
-    if predicted_sales is not None:
-        st.success(f"Predicted Sales: {predicted_sales}")  # Assuming prediction is a scalar value
+        # Display predicted sales
+        if predicted_sales is not None:
+            st.success(f"Predicted sales: {predicted_sales}")
+        else:
+            st.error("Failed to make prediction. Please check your data.")
