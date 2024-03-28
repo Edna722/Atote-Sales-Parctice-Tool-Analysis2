@@ -42,7 +42,7 @@ sales_data.set_index('Period', inplace=True)
 cutoff_date = pd.Timestamp('2017-01-01')
 train = sales_data[sales_data.index < cutoff_date]
 test = sales_data[sales_data.index >= cutoff_date]
-
+#
 # Display sample data
 st.write(sales_data.head())
 
