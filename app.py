@@ -65,7 +65,7 @@ def predict_sales(model, model_params, test_data):
     else:
         raise ValueError("Invalid model selected")
     return prediction
-#
+##
 
 # PREDICTION
 if st.button("Predict Sales"):
